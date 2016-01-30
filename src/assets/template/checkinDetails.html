@@ -1,0 +1,65 @@
+<div ng-controller="CheckinDetailsController as CheckinDetailsCtrl" >
+  <div class="container">
+
+
+    <div class="profil_img">
+        <img src="{{checkinsDetails.user.picture}}" alt="" />
+    </div>
+    <div class="profil">
+      <h1>{{checkinsDetails.user.name}}</h1>
+      <p>
+        <span class="sous_titre">id: </span>{{checkinsDetails.id}}
+        <br>
+        <span class="sous_titre">Date de création: </span>{{checkinsDetails.created_at}}
+        <br>
+        <span class="sous_titre">Uploadé le: </span>{{checkinsDetails.updated_at}}
+        <br>
+        <span class="sous_titre">Email: </span>{{checkinsDetails.user.email}}
+        <br>
+        <span class="sous_titre">lattitude: </span>{{checkinsDetails.lat}}
+        <br>
+        <span class="sous_titre">longitude: </span>{{checkinsDetails.lng}}
+      </p>
+    </div>
+
+    <div class="meteo">
+      <h1>{{openweather.name}}, {{openweather.sys.country}}</h1>
+      <div class="content">
+      <img src="http://openweathermap.org/img/w/{{openweather.weather[0].icon}}.png" alt="" />
+      <p>
+        <span class="sous_titre">Temps: </span>{{openweather.weather[0].description}}
+        <br>
+        <span class="sous_titre">Temperature: </span>{{openweather.main.temp}} °C
+        <br>
+        <span class="sous_titre">Temperature min: </span>{{openweather.main.temp_min}} °C
+        <br>
+        <span class="sous_titre">Temperature max: </span>{{openweather.main.temp_max}} °C
+      </p>
+    </div>
+    </div>
+
+  </div>
+    <div id="container">
+            <div id="destinationForm">
+                <form name="direction" id="direction" ng-submit="submitMaps()">
+                    <label>Destination :</label>
+                    <input type="text" name="destination" ng-model="destination" id="destination">
+                    <input type="submit" class="button green" value="Calculer l'itinéraire">
+                </form>
+                <div id="panel"></div>
+            </div>
+
+            <div id="map">
+
+            </div>
+     </div>
+
+     <script type="text/javascript">
+       window.onload = function(){
+         console.log("hauteur: "+document.getElementsByClassName("profil_img")[0].height)
+             document.getElementsByClassName("profil")[0].height = document.getElementsByClassName("profil_img")[0].height;
+             document.getElementsByClassName("meteo")[0].height = document.getElementsByClassName("profil_img")[0].height;
+       }
+     </script>
+
+</div>

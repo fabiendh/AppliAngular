@@ -1,0 +1,29 @@
+<h1>Check In Details</h1>
+<div ng-controller="CheckinDetailsController as CheckinDetailsCtrl" style="text-align:center; width:520px; margin:auto">
+  <div style="margin:auto">
+    <h1>{{checkinsDetails.user.name}}</h1>
+    <br>
+    <img src="{{checkinsDetails.user.picture}}" alt="" />
+    <br>
+    <p style="text-align:left; background-color: deeppink; padding:7px; margin-top: 0px;">
+      id: {{checkinsDetails.id}}
+      <br>
+      Date de création: {{checkinsDetails.created_at}}
+      <br>
+      Uploadé le: {{checkinsDetails.updated_at}}
+      <br>
+      Email: {{checkinsDetails.user.email}}
+      <br>
+      lattitude: {{checkinsDetails.lat}}
+      <br>
+      longitude: {{checkinsDetails.lng}}
+    </p>
+    <map center="{{checkinsDetails.lat}}, {{checkinsDetails.lng}}" zoom="20"></map>
+  </div>
+
+  <!--<ul>
+    <li ng-repeat="checkin in checkinsDetails">
+      <a href="#/checkin/{{checkin.id}}">{{checkin.id}}</a>
+    </li>
+  </ul>-->
+</div>
