@@ -1,9 +1,8 @@
-<div ng-controller="CheckinDetailsController as CheckinDetailsCtrl" >
-  <div class="container">
-
+<div ng-if="testAuth == true" ng-controller="LoginController as LoginCtrl">
+  <div class="container" ng-controller="CheckinDetailsController as CheckinDetailsCtrl" >
 
     <div class="profil_img">
-        <img src="{{checkinsDetails.user.picture}}" alt="" />
+        <img ng-src="{{checkinsDetails.user.picture}}" alt="" />
     </div>
     <div class="profil">
       <h1>{{checkinsDetails.user.name}}</h1>
@@ -62,4 +61,8 @@
        }
      </script>
 
+</div>
+
+<div ng-if="testAuth == false" ng-controller="LoginController as LoginCtrl">
+    Vous devez etres connecte
 </div>

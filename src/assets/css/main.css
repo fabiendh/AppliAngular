@@ -243,3 +243,10 @@ h2 {
     padding: 0; }
   #container #map {
     margin-top: auto; } }
+
+.authentification {
+  position: fixed;
+  top: 30%;
+  left: 30%;
+  background-color: white;
+  padding: 20px; }

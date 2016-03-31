@@ -1,0 +1,13 @@
+<div class="authentification" ng-controller="LoginController as LoginCtrl">
+  <button ng-click="authenticate('facebook')">Sign in with Facebook</button>
+  <button ng-click="authenticate('google')">Sign in with Google</button>
+  <button ng-click="authenticate('github')">Sign in with GitHub</button>
+  <button ng-click="authenticate('linkedin')">Sign in with LinkedIn</button>
+  <button ng-click="authenticate('twitter')">Sign in with Twitter</button>
+
+  <form class="" ng-submit="submit()">
+    <input type="text" placeholder="email" ng-model="email" name="email" value="">
+    <input type="text" placeholder="mot de passe" ng-model="password" name="password" value="">
+    <input type="submit" name="name" value="Sign">
+  </form>
+</div>

@@ -174,6 +174,7 @@
     $scope.submit = function (key, val) {
         var tab = localStorageService.get("CheckIn");
         if (tab === null) {
+          console.log("test");
           tab = [];
         }
 
@@ -219,9 +220,10 @@
   .controller('SyncController', function($rootScope, $scope, $http, localStorageService){
     $scope.submitLS = function () {
       var tabLS = localStorageService.get("CheckIn");
-
-      for (var i = 0; i < tabLS.length; i++){
-        envoie(tabLS, i);
+      if (tabLS !== null) {
+        for (var i = 0; i < tabLS.length; i++){
+          envoie(tabLS, i);
+        }
       }
     };
 

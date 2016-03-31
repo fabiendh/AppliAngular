@@ -28902,6 +28902,455 @@ $provide.value("$locale", {
 })(window, document);
 
 !window.angular.$$csp().noInlineStyle && window.angular.element(document.head).prepend('<style type="text/css">@charset "UTF-8";[ng\\:cloak],[ng-cloak],[data-ng-cloak],[x-ng-cloak],.ng-cloak,.x-ng-cloak,.ng-hide:not(.ng-hide-animate){display:none !important;}ng\\:form{display:block;}.ng-animate-shim{visibility:hidden;}.ng-anchor{position:absolute;}</style>');
+/**
+ * An Angular module that gives you access to the browsers local storage
+ * @version v0.2.3 - 2015-10-11
+ * @link https://github.com/grevory/angular-local-storage
+ * @author grevory <greg@gregpike.ca>
+ * @license MIT License, http://www.opensource.org/licenses/MIT
+ */
+(function ( window, angular, undefined ) {
+/*jshint globalstrict:true*/
+'use strict';
+
+var isDefined = angular.isDefined,
+  isUndefined = angular.isUndefined,
+  isNumber = angular.isNumber,
+  isObject = angular.isObject,
+  isArray = angular.isArray,
+  extend = angular.extend,
+  toJson = angular.toJson;
+var angularLocalStorage = angular.module('LocalStorageModule', []);
+
+angularLocalStorage.provider('localStorageService', function() {
+
+  // You should set a prefix to avoid overwriting any local storage variables from the rest of your app
+  // e.g. localStorageServiceProvider.setPrefix('yourAppName');
+  // With provider you can use config as this:
+  // myApp.config(function (localStorageServiceProvider) {
+  //    localStorageServiceProvider.prefix = 'yourAppName';
+  // });
+  this.prefix = 'ls';
+
+  // You could change web storage type localstorage or sessionStorage
+  this.storageType = 'localStorage';
+
+  // Cookie options (usually in case of fallback)
+  // expiry = Number of days before cookies expire // 0 = Does not expire
+  // path = The web path the cookie represents
+  this.cookie = {
+    expiry: 30,
+    path: '/'
+  };
+
+  // Send signals for each of the following actions?
+  this.notify = {
+    setItem: true,
+    removeItem: false
+  };
+
+  // Setter for the prefix
+  this.setPrefix = function(prefix) {
+    this.prefix = prefix;
+    return this;
+  };
+
+   // Setter for the storageType
+   this.setStorageType = function(storageType) {
+     this.storageType = storageType;
+     return this;
+   };
+
+  // Setter for cookie config
+  this.setStorageCookie = function(exp, path) {
+    this.cookie.expiry = exp;
+    this.cookie.path = path;
+    return this;
+  };
+
+  // Setter for cookie domain
+  this.setStorageCookieDomain = function(domain) {
+    this.cookie.domain = domain;
+    return this;
+  };
+
+  // Setter for notification config
+  // itemSet & itemRemove should be booleans
+  this.setNotify = function(itemSet, itemRemove) {
+    this.notify = {
+      setItem: itemSet,
+      removeItem: itemRemove
+    };
+    return this;
+  };
+
+  this.$get = ['$rootScope', '$window', '$document', '$parse', function($rootScope, $window, $document, $parse) {
+    var self = this;
+    var prefix = self.prefix;
+    var cookie = self.cookie;
+    var notify = self.notify;
+    var storageType = self.storageType;
+    var webStorage;
+
+    // When Angular's $document is not available
+    if (!$document) {
+      $document = document;
+    } else if ($document[0]) {
+      $document = $document[0];
+    }
+
+    // If there is a prefix set in the config lets use that with an appended period for readability
+    if (prefix.substr(-1) !== '.') {
+      prefix = !!prefix ? prefix + '.' : '';
+    }
+    var deriveQualifiedKey = function(key) {
+      return prefix + key;
+    };
+    // Checks the browser to see if local storage is supported
+    var browserSupportsLocalStorage = (function () {
+      try {
+        var supported = (storageType in $window && $window[storageType] !== null);
+
+        // When Safari (OS X or iOS) is in private browsing mode, it appears as though localStorage
+        // is available, but trying to call .setItem throws an exception.
+        //
+        // "QUOTA_EXCEEDED_ERR: DOM Exception 22: An attempt was made to add something to storage
+        // that exceeded the quota."
+        var key = deriveQualifiedKey('__' + Math.round(Math.random() * 1e7));
+        if (supported) {
+          webStorage = $window[storageType];
+          webStorage.setItem(key, '');
+          webStorage.removeItem(key);
+        }
+
+        return supported;
+      } catch (e) {
+        storageType = 'cookie';
+        $rootScope.$broadcast('LocalStorageModule.notification.error', e.message);
+        return false;
+      }
+    }());
+
+    // Directly adds a value to local storage
+    // If local storage is not available in the browser use cookies
+    // Example use: localStorageService.add('library','angular');
+    var addToLocalStorage = function (key, value) {
+      // Let's convert undefined values to null to get the value consistent
+      if (isUndefined(value)) {
+        value = null;
+      } else {
+        value = toJson(value);
+      }
+
+      // If this browser does not support local storage use cookies
+      if (!browserSupportsLocalStorage || self.storageType === 'cookie') {
+        if (!browserSupportsLocalStorage) {
+            $rootScope.$broadcast('LocalStorageModule.notification.warning', 'LOCAL_STORAGE_NOT_SUPPORTED');
+        }
+
+        if (notify.setItem) {
+          $rootScope.$broadcast('LocalStorageModule.notification.setitem', {key: key, newvalue: value, storageType: 'cookie'});
+        }
+        return addToCookies(key, value);
+      }
+
+      try {
+        if (webStorage) {
+          webStorage.setItem(deriveQualifiedKey(key), value);
+        }
+        if (notify.setItem) {
+          $rootScope.$broadcast('LocalStorageModule.notification.setitem', {key: key, newvalue: value, storageType: self.storageType});
+        }
+      } catch (e) {
+        $rootScope.$broadcast('LocalStorageModule.notification.error', e.message);
+        return addToCookies(key, value);
+      }
+      return true;
+    };
+
+    // Directly get a value from local storage
+    // Example use: localStorageService.get('library'); // returns 'angular'
+    var getFromLocalStorage = function (key) {
+
+      if (!browserSupportsLocalStorage || self.storageType === 'cookie') {
+        if (!browserSupportsLocalStorage) {
+          $rootScope.$broadcast('LocalStorageModule.notification.warning','LOCAL_STORAGE_NOT_SUPPORTED');
+        }
+
+        return getFromCookies(key);
+      }
+
+      var item = webStorage ? webStorage.getItem(deriveQualifiedKey(key)) : null;
+      // angular.toJson will convert null to 'null', so a proper conversion is needed
+      // FIXME not a perfect solution, since a valid 'null' string can't be stored
+      if (!item || item === 'null') {
+        return null;
+      }
+
+      try {
+        return JSON.parse(item);
+      } catch (e) {
+        return item;
+      }
+    };
+
+    // Remove an item from local storage
+    // Example use: localStorageService.remove('library'); // removes the key/value pair of library='angular'
+    var removeFromLocalStorage = function () {
+      var i, key;
+      for (i=0; i<arguments.length; i++) {
+        key = arguments[i];
+        if (!browserSupportsLocalStorage || self.storageType === 'cookie') {
+          if (!browserSupportsLocalStorage) {
+            $rootScope.$broadcast('LocalStorageModule.notification.warning', 'LOCAL_STORAGE_NOT_SUPPORTED');
+          }
+
+          if (notify.removeItem) {
+            $rootScope.$broadcast('LocalStorageModule.notification.removeitem', {key: key, storageType: 'cookie'});
+          }
+          removeFromCookies(key);
+        }
+        else {
+          try {
+            webStorage.removeItem(deriveQualifiedKey(key));
+            if (notify.removeItem) {
+              $rootScope.$broadcast('LocalStorageModule.notification.removeitem', {
+                key: key,
+                storageType: self.storageType
+              });
+            }
+          } catch (e) {
+            $rootScope.$broadcast('LocalStorageModule.notification.error', e.message);
+            removeFromCookies(key);
+          }
+        }
+      }
+    };
+
+    // Return array of keys for local storage
+    // Example use: var keys = localStorageService.keys()
+    var getKeysForLocalStorage = function () {
+
+      if (!browserSupportsLocalStorage) {
+        $rootScope.$broadcast('LocalStorageModule.notification.warning', 'LOCAL_STORAGE_NOT_SUPPORTED');
+        return false;
+      }
+
+      var prefixLength = prefix.length;
+      var keys = [];
+      for (var key in webStorage) {
+        // Only return keys that are for this app
+        if (key.substr(0,prefixLength) === prefix) {
+          try {
+            keys.push(key.substr(prefixLength));
+          } catch (e) {
+            $rootScope.$broadcast('LocalStorageModule.notification.error', e.Description);
+            return [];
+          }
+        }
+      }
+      return keys;
+    };
+
+    // Remove all data for this app from local storage
+    // Also optionally takes a regular expression string and removes the matching key-value pairs
+    // Example use: localStorageService.clearAll();
+    // Should be used mostly for development purposes
+    var clearAllFromLocalStorage = function (regularExpression) {
+
+      // Setting both regular expressions independently
+      // Empty strings result in catchall RegExp
+      var prefixRegex = !!prefix ? new RegExp('^' + prefix) : new RegExp();
+      var testRegex = !!regularExpression ? new RegExp(regularExpression) : new RegExp();
+
+      if (!browserSupportsLocalStorage || self.storageType === 'cookie') {
+        if (!browserSupportsLocalStorage) {
+          $rootScope.$broadcast('LocalStorageModule.notification.warning', 'LOCAL_STORAGE_NOT_SUPPORTED');
+        }
+        return clearAllFromCookies();
+      }
+
+      var prefixLength = prefix.length;
+
+      for (var key in webStorage) {
+        // Only remove items that are for this app and match the regular expression
+        if (prefixRegex.test(key) && testRegex.test(key.substr(prefixLength))) {
+          try {
+            removeFromLocalStorage(key.substr(prefixLength));
+          } catch (e) {
+            $rootScope.$broadcast('LocalStorageModule.notification.error',e.message);
+            return clearAllFromCookies();
+          }
+        }
+      }
+      return true;
+    };
+
+    // Checks the browser to see if cookies are supported
+    var browserSupportsCookies = (function() {
+      try {
+        return $window.navigator.cookieEnabled ||
+          ("cookie" in $document && ($document.cookie.length > 0 ||
+          ($document.cookie = "test").indexOf.call($document.cookie, "test") > -1));
+      } catch (e) {
+          $rootScope.$broadcast('LocalStorageModule.notification.error', e.message);
+          return false;
+      }
+    }());
+
+    // Directly adds a value to cookies
+    // Typically used as a fallback is local storage is not available in the browser
+    // Example use: localStorageService.cookie.add('library','angular');
+    var addToCookies = function (key, value, daysToExpiry) {
+
+      if (isUndefined(value)) {
+        return false;
+      } else if(isArray(value) || isObject(value)) {
+        value = toJson(value);
+      }
+
+      if (!browserSupportsCookies) {
+        $rootScope.$broadcast('LocalStorageModule.notification.error', 'COOKIES_NOT_SUPPORTED');
+        return false;
+      }
+
+      try {
+        var expiry = '',
+            expiryDate = new Date(),
+            cookieDomain = '';
+
+        if (value === null) {
+          // Mark that the cookie has expired one day ago
+          expiryDate.setTime(expiryDate.getTime() + (-1 * 24 * 60 * 60 * 1000));
+          expiry = "; expires=" + expiryDate.toGMTString();
+          value = '';
+        } else if (isNumber(daysToExpiry) && daysToExpiry !== 0) {
+          expiryDate.setTime(expiryDate.getTime() + (daysToExpiry * 24 * 60 * 60 * 1000));
+          expiry = "; expires=" + expiryDate.toGMTString();
+        } else if (cookie.expiry !== 0) {
+          expiryDate.setTime(expiryDate.getTime() + (cookie.expiry * 24 * 60 * 60 * 1000));
+          expiry = "; expires=" + expiryDate.toGMTString();
+        }
+        if (!!key) {
+          var cookiePath = "; path=" + cookie.path;
+          if(cookie.domain){
+            cookieDomain = "; domain=" + cookie.domain;
+          }
+          $document.cookie = deriveQualifiedKey(key) + "=" + encodeURIComponent(value) + expiry + cookiePath + cookieDomain;
+        }
+      } catch (e) {
+        $rootScope.$broadcast('LocalStorageModule.notification.error',e.message);
+        return false;
+      }
+      return true;
+    };
+
+    // Directly get a value from a cookie
+    // Example use: localStorageService.cookie.get('library'); // returns 'angular'
+    var getFromCookies = function (key) {
+      if (!browserSupportsCookies) {
+        $rootScope.$broadcast('LocalStorageModule.notification.error', 'COOKIES_NOT_SUPPORTED');
+        return false;
+      }
+
+      var cookies = $document.cookie && $document.cookie.split(';') || [];
+      for(var i=0; i < cookies.length; i++) {
+        var thisCookie = cookies[i];
+        while (thisCookie.charAt(0) === ' ') {
+          thisCookie = thisCookie.substring(1,thisCookie.length);
+        }
+        if (thisCookie.indexOf(deriveQualifiedKey(key) + '=') === 0) {
+          var storedValues = decodeURIComponent(thisCookie.substring(prefix.length + key.length + 1, thisCookie.length));
+          try {
+            return JSON.parse(storedValues);
+          } catch(e) {
+            return storedValues;
+          }
+        }
+      }
+      return null;
+    };
+
+    var removeFromCookies = function (key) {
+      addToCookies(key,null);
+    };
+
+    var clearAllFromCookies = function () {
+      var thisCookie = null, thisKey = null;
+      var prefixLength = prefix.length;
+      var cookies = $document.cookie.split(';');
+      for(var i = 0; i < cookies.length; i++) {
+        thisCookie = cookies[i];
+
+        while (thisCookie.charAt(0) === ' ') {
+          thisCookie = thisCookie.substring(1, thisCookie.length);
+        }
+
+        var key = thisCookie.substring(prefixLength, thisCookie.indexOf('='));
+        removeFromCookies(key);
+      }
+    };
+
+    var getStorageType = function() {
+      return storageType;
+    };
+
+    // Add a listener on scope variable to save its changes to local storage
+    // Return a function which when called cancels binding
+    var bindToScope = function(scope, key, def, lsKey) {
+      lsKey = lsKey || key;
+      var value = getFromLocalStorage(lsKey);
+
+      if (value === null && isDefined(def)) {
+        value = def;
+      } else if (isObject(value) && isObject(def)) {
+        value = extend(def, value);
+      }
+
+      $parse(key).assign(scope, value);
+
+      return scope.$watch(key, function(newVal) {
+        addToLocalStorage(lsKey, newVal);
+      }, isObject(scope[key]));
+    };
+
+    // Return localStorageService.length
+    // ignore keys that not owned
+    var lengthOfLocalStorage = function() {
+      var count = 0;
+      var storage = $window[storageType];
+      for(var i = 0; i < storage.length; i++) {
+        if(storage.key(i).indexOf(prefix) === 0 ) {
+          count++;
+        }
+      }
+      return count;
+    };
+
+    return {
+      isSupported: browserSupportsLocalStorage,
+      getStorageType: getStorageType,
+      set: addToLocalStorage,
+      add: addToLocalStorage, //DEPRECATED
+      get: getFromLocalStorage,
+      keys: getKeysForLocalStorage,
+      remove: removeFromLocalStorage,
+      clearAll: clearAllFromLocalStorage,
+      bind: bindToScope,
+      deriveKey: deriveQualifiedKey,
+      length: lengthOfLocalStorage,
+      cookie: {
+        isSupported: browserSupportsCookies,
+        set: addToCookies,
+        add: addToCookies, //DEPRECATED
+        get: getFromCookies,
+        remove: removeFromCookies,
+        clearAll: clearAllFromCookies
+      }
+    };
+  }];
+});
+})( window, window.angular );
 (function(angular){
   'use strict';
 
@@ -28967,119 +29416,259 @@ $provide.value("$locale", {
   angular.module('CheckinModule',[])
   .controller('CheckinController', function($scope, $http){
 
-
-
-    console.log("Coucou de CheckinController");
     var getCheckInList = function(){
       // Simple GET request example:
       $http({
         method: 'GET',
         url: 'http://checkin-api.dev.cap-liberte.com/checkin'
       }).then(function successCallback(response) {
-          console.log("Succes");
-          console.log(response.data);
-          $scope.checkins = response.data;
-          // this callback will be called asynchronously
-          // when the response is available
-        }, function errorCallback(response) {
-          console.log("Erreur");
-          console.log(response);
-          // called asynchronously if an error occurs
-          // or server returns response with an error status.
-        });
+
+        $scope.checkins = response.data;
+        // this callback will be called asynchronously
+        // when the response is available
+      }, function errorCallback(response) {
+
+        // called asynchronously if an error occurs
+        // or server returns response with an error status.
+      });
     };
 
     getCheckInList();
 
     $scope.$on('EnvoiSucces', function () {
-      console.log("SuccesEnvoie");
+
       getCheckInList();
     });
 
   })
 
   .controller('CheckinDetailsController', function($routeParams, $scope, $http){
-      console.log("Coucou de CheckinDetailsController");
-      console.log($routeParams);
-      // Simple GET request example:
-      $http({
-        method: 'GET',
-        url: 'http://checkin-api.dev.cap-liberte.com/checkin/'+$routeParams.checkinId
-      }).then(function successCallback(response) {
-          console.log("Succes");
-          console.log(response.data);
-          $scope.checkinsDetails = response.data;
-          // this callback will be called asynchronously
-          // when the response is available
-        }, function errorCallback(response) {
-          console.log("Erreur");
-          console.log(response);
-          // called asynchronously if an error occurs
-          // or server returns response with an error status.
-        });
-  })
+    var cities;
 
-  .controller('CheckinFormController', function($rootScope, $scope, $http){
-      $scope.loading = false;
-      var CheckinFormController= this;
-      $scope.geolocationIsSupported= false;
+    // Simple GET request example:
+    $http({
+      method: 'GET',
+      url: 'http://checkin-api.dev.cap-liberte.com/checkin/'+$routeParams.checkinId
+    }).then(function successCallback(response) {
+      $scope.checkinsDetails = response.data;
+      getMeteo();
 
-      $scope.getLocation=function(){
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition($scope.showPosition, $scope.falsePosition);
-        } else {
-            console.log("Geolocation is not supported by this browser.");
-        }
-      };
-
-      $scope.showPosition=function(position){
-        $scope.geolocationIsSupported= true;
-        console.log("Latitude: " + position.coords.latitude +
-        " Longitude: " + position.coords.longitude);
-        $scope.$apply(function () {
-          $scope.lat=position.coords.latitude;
-          $scope.lng=position.coords.longitude;
-        });
-        //return position.coords;
-      };
-
-      $scope.falsePosition=function(position){
-        $scope.geolocationIsSupported= false;
-      };
-
-      $scope.submit = function(){
-
-        console.log("Submit CheckIn");
-        console.log("test: "+$scope.lat+' '+$scope.lng);
-
-        $http({
-          method: 'POST',
-          url: 'http://checkin-api.dev.cap-liberte.com/checkin',
-          data: {
-            lat: $scope.lat,
-            lng: $scope.lng
-          },
-          headers:{
-            'Content-Type':undefined
-          }
-        }).then(function successCallback(response) {
-            console.log("Succes");
-            console.log(response.data);
-            $scope.checkinsDetails = response.data;
-            $scope.loading = false;
-            $rootScope.$broadcast('EnvoiSucces');
-            // this callback will be called asynchronously
-            // when the response is available
-          }, function errorCallback(response) {
-            console.log("Erreur");
-            console.log(response);
-            $scope.loading = false;
-            // called asynchronously if an error occurs
-            // or server returns response with an error status.
-          });
-      };
+      // this callback will be called asynchronously
+      // when the response is available
+    }, function errorCallback(response) {
+      // called asynchronously if an error occurs
+      // or server returns response with an error status.
     });
 
+
+    // Simple GET request example:
+    var getMeteo=function(){
+      $http({
+        method: 'GET',
+        url: 'http://api.openweathermap.org/data/2.5/weather?lat='+$scope.checkinsDetails.lat+'&lon='+$scope.checkinsDetails.lng+'&appid=c68e847fbb4213fb36c3bfb29a4a9b02&lang=fr'
+      }).then(function successCallback(response) {
+        $scope.openweather = response.data;
+        $scope.openweather.main.temp_min=  Math.round($scope.openweather.main.temp_min - 273);
+        $scope.openweather.main.temp_max=  Math.round($scope.openweather.main.temp_max - 273);
+        $scope.openweather.main.temp=  Math.round($scope.openweather.main.temp - 273);
+        getMaps();
+        // this callback will be called asynchronously
+        // when the response is available
+      }, function errorCallback(response) {
+        // called asynchronously if an error occurs
+        // or server returns response with an error status.
+      });
+    };
+
+    var getMaps=function(){
+      var latLng = new google.maps.LatLng($scope.checkinsDetails.lat, $scope.checkinsDetails.lng); // Correspond au coordonnées de Lille
+      var myOptions = {
+        zoom      : 14, // Zoom par défaut
+        center    : latLng, // Coordonnées de départ de la carte de type latLng
+        mapTypeId : google.maps.MapTypeId.ROADMAP, // Type de carte, différentes valeurs possible HYBRID, ROADMAP, SATELLITE, TERRAIN
+        maxZoom   : 20
+      };
+
+      $scope.map = new google.maps.Map(document.getElementById('map'), myOptions);
+      $scope.panel    = document.getElementById('panel');
+      var marker = new google.maps.Marker({
+        position : latLng,
+        map      : $scope.map,
+        title    : 'Position de '+$scope.checkinsDetails.user.name
+      });
+
+      var contentMarker = [
+            '<div id="containerTabs">',
+            '<div id="tabs">',
+            '<h1>'+$scope.openweather.name+', '+$scope.openweather.sys.country+'</h1>',
+            '<div id="tab-1">',
+              '<h3>Position de '+$scope.checkinsDetails.user.name+'</h3><p> Latitude: '+$scope.checkinsDetails.lat+' Longitude: '+$scope.checkinsDetails.lng+'</p>',
+            '</div>',
+            '<div id="tab-2">',
+            '<h3>Meteo</h3>',
+            '<p> Temps: '+$scope.openweather.weather[0].description+'</p>',
+            '<p> Temperature: '+$scope.openweather.main.temp+'°C</p>',
+            '</div>',
+            '</div>',
+            '</div>'
+        ].join('');
+
+        var infoWindow = new google.maps.InfoWindow({
+          content  : contentMarker,
+          position : latLng
+        });
+
+        google.maps.event.addListener(marker, 'click', function() {
+          infoWindow.open($scope.map,marker);
+        });
+
+        google.maps.event.addListener(infoWindow, 'domready', function(){ // infoWindow est biensûr notre info-bulle
+          jQuery("#tabs").tabs();
+        });
+
+      $scope.direction = new google.maps.DirectionsRenderer({
+        map   : $scope.map,
+        draggable : true,
+        panel : $scope.panel // Dom element pour afficher les instructions d'itinéraire
+      });
+    };
+
+    $scope.submitMaps = function(){
+
+      $scope.origin      = new google.maps.LatLng($scope.checkinsDetails.lat, $scope.checkinsDetails.lng);  // Le point départ
+      $scope.destination = $scope.destination; // Le point d'arrivé
+      if($scope.origin && $scope.destination){
+
+          var request = {
+              origin      : $scope.origin,
+              destination : $scope.destination,
+              travelMode  : google.maps.DirectionsTravelMode.DRIVING // Mode de conduite
+          };
+
+          var directionsService = new google.maps.DirectionsService(); // Service de calcul d'itinéraire
+          directionsService.route(request, function(response, status){ // Envoie de la requête pour calculer le parcours
+              if(status == google.maps.DirectionsStatus.OK){
+                  //directionsDisplay.setMap($scope.map);
+                  $scope.direction.setDirections(response); // Trace l'itinéraire sur la carte et les différentes étapes du parcours
+              }
+          });
+      }
+    };
+
+  })
+
+  .controller('CheckinFormController', function($rootScope, $scope, $http, localStorageService){
+    $scope.loading = false;
+    $scope.number = 0;
+    var CheckinFormController= this;
+    $scope.geolocationIsSupported= false;
+
+    $scope.getLocation=function(){
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition($scope.showPosition, $scope.falsePosition);
+      } else {
+      }
+    };
+
+    $scope.showPosition=function(position){
+      $scope.geolocationIsSupported= true;
+      $scope.$apply(function () {
+        $scope.lat=position.coords.latitude;
+        $scope.lng=position.coords.longitude;
+      });
+      //return position.coords;
+    };
+
+    $scope.falsePosition=function(position){
+      $scope.geolocationIsSupported= false;
+    };
+
+    $scope.submit = function (key, val) {
+        var tab = localStorageService.get("CheckIn");
+        if (tab === null) {
+          console.log("test");
+          tab = [];
+        }
+
+        var checkins={
+                lat: $scope.lat,
+                lng: $scope.lng
+              };
+
+        tab.push(checkins);
+        key = "CheckIn";
+        val = tab;
+        localStorageService.set(key, val);
+
+        $rootScope.$broadcast('LocalStorageSucces');
+    };
+
+    $scope.$on('LocalStorageSucces', function () {
+      var tab = localStorageService.get("CheckIn");
+      $scope.number = tab.length;
+    });
+
+  })
+
+  .controller('OpenWeatherController', function($scope, $http){
+
+    // Simple GET request example:
+    $http({
+      method: 'GET',
+      url: 'http://api.openweathermap.org/data/2.5/weather?lat='+$scope.checkinsDetails.lat+'&lon='+$scope.checkinsDetails.lng+'&appid=c68e847fbb4213fb36c3bfb29a4a9b02&lang=fr'
+    }).then(function successCallback(response) {
+
+      $scoop.openweather = response.data;
+      // this callback will be called asynchronously
+      // when the response is available
+    }, function errorCallback(response) {
+
+      // called asynchronously if an error occurs
+      // or server returns response with an error status.
+    });
+
+  })
+
+  .controller('SyncController', function($rootScope, $scope, $http, localStorageService){
+    $scope.submitLS = function () {
+      var tabLS = localStorageService.get("CheckIn");
+      if (tabLS !== null) {
+        for (var i = 0; i < tabLS.length; i++){
+          envoie(tabLS, i);
+        }
+      }
+    };
+
+    function envoie (tabLS, i) {
+      $http({
+        method: 'POST',
+        url: 'http://checkin-api.dev.cap-liberte.com/checkin',
+        data: {
+          lat: tabLS[i].lat,
+          lng: tabLS[i].lng
+        },
+        headers:{
+          'Content-Type':undefined
+        }
+      }).then(function successCallback(response) {
+        $scope.checkinsDetails = response.data;
+        $scope.loading = false;
+        //localStorageService.remove("CheckIn");
+        tabLS.splice(i, 1);
+        $rootScope.$broadcast('EnvoiSucces', tabLS);
+
+        // tab splice -> enlever les items qui ont réussi
+        // this callback will be called asynchronously
+        // when the response is available
+      }, function errorCallback(response) {
+        $scope.loading = false;
+        // called asynchronously if an error occurs
+        // or server returns response with an error status.
+      });
+      localStorageService.remove("CheckIn");
+    }
+
+  });
 
 })(window.angular);
 
@@ -29089,18 +29678,128 @@ $provide.value("$locale", {
   angular.module('myApp',[
     'ngRoute',
     'ngMap',
+    'LocalStorageModule',
+    'satellizer',
     'helloModule', 'ContactModule', 'CheckinModule',
   ])
 
   .config(function($routeProvider) {
     $routeProvider
-        .when('/', {
-          templateUrl:'assets/template/checkinList.html',
-        })
-        .when('/checkin/:checkinId', {
-          templateUrl:'assets/template/checkinDetails.html',
-          controller: 'CheckinDetailsController'
-        });
+    .when('/', {
+      templateUrl:'assets/template/checkinList.html',
+    })
+    .when('/auth', {
+      templateUrl:'assets/template/authentification.html',
+      controller: 'LoginController'
+    })
+    .when('/checkin/:checkinId', {
+      templateUrl:'assets/template/checkinDetails.html',
+      controller: 'CheckinDetailsController'
+    });
+  })
+
+  .config(function($authProvider) {
+    $authProvider.httpInterceptor = function() { return true; };
+    $authProvider.withCredentials = false;
+    $authProvider.tokenRoot = null;
+    $authProvider.cordova = false;
+    $authProvider.baseUrl = 'http://checkin-api.dev.cap-liberte.com/';
+    $authProvider.loginUrl = 'auth';
+    $authProvider.signupUrl = '/auth/signup';
+    $authProvider.unlinkUrl = '/auth/unlink/';
+    $authProvider.tokenName = 'token';
+    $authProvider.tokenPrefix = 'satellizer';
+    $authProvider.authHeader = 'Authorization';
+    $authProvider.authToken = 'Bearer';
+    $authProvider.storageType = 'localStorage';
+    //http:checkin-api.dev.cap-liberte.com/auth
+
+    // Facebook
+    $authProvider.facebook({
+      clientId: 'Facebook App ID',
+      responseType: 'token',
+      name: 'facebook',
+      url: '/auth/facebook',
+      authorizationEndpoint: 'https://www.facebook.com/v2.5/dialog/oauth',
+      redirectUri: window.location.origin + '/',
+      requiredUrlParams: ['display', 'scope'],
+      scope: ['email'],
+      scopeDelimiter: ',',
+      display: 'popup',
+      type: '2.0',
+      popupOptions: { width: 580, height: 400 }
+    });
+
+    // Google
+    $authProvider.google({
+      clientId: '163298903866-mmpoj5bjtv4ne8crbh4l53v1tllguoes.apps.googleusercontent.com',
+      url: '/auth/google',
+      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/auth',
+      redirectUri: window.location.origin,
+      requiredUrlParams: ['scope'],
+      optionalUrlParams: ['display'],
+      scope: ['profile', 'email'],
+      scopePrefix: 'openid',
+      scopeDelimiter: ' ',
+      display: 'popup',
+      type: '2.0',
+      popupOptions: { width: 452, height: 633 }
+    });
+
+    // GitHub
+    $authProvider.github({
+      clientId: 'GitHub Client ID',
+      url: '/auth/github',
+      authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+      redirectUri: window.location.origin,
+      optionalUrlParams: ['scope'],
+      scope: ['user:email'],
+      scopeDelimiter: ' ',
+      type: '2.0',
+      popupOptions: { width: 1020, height: 618 }
+    });
+
+    // Twitter
+    $authProvider.twitter({
+      url: '/auth/twitter',
+      authorizationEndpoint: 'https://api.twitter.com/oauth/authenticate',
+      redirectUri: window.location.origin,
+      type: '1.0',
+      popupOptions: { width: 495, height: 645 }
+    });
+
+    $authProvider.oauth2({
+      name: null,
+      url: null,
+      clientId: '109838506980143940494',
+      redirectUri: null,
+      authorizationEndpoint: null,
+      defaultUrlParams: ['response_type', 'client_id', 'redirect_uri'],
+      requiredUrlParams: null,
+      optionalUrlParams: null,
+      scope: null,
+      scopePrefix: null,
+      scopeDelimiter: null,
+      state: null,
+      type: null,
+      popupOptions: null,
+      responseType: 'code',
+      responseParams: {
+        code: 'code',
+        clientId: 'clientId',
+        redirectUri: 'redirectUri'
+      }
+    });
+
+    // Generic OAuth 1.0
+    $authProvider.oauth1({
+      name: null,
+      url: null,
+      authorizationEndpoint: null,
+      redirectUri: null,
+      type: null,
+      popupOptions: null
+    });
   });
 })(window.angular);
 
@@ -30095,3 +30794,34 @@ function ngViewFillContentFactory($compile, $controller, $route) {
 
 
 })(window, window.angular);
+
+/**
+ * Satellizer 0.14.0
+ * (c) 2016 Sahat Yalkabov
+ * License: MIT
+ */
+"undefined"!=typeof module&&"undefined"!=typeof exports&&module.exports===exports&&(module.exports="satellizer"),function(e,t,r){"use strict";e.location.origin||(e.location.origin=e.location.protocol+"//"+e.location.hostname+(e.location.port?":"+e.location.port:"")),t.module("satellizer",[]).constant("SatellizerConfig",{httpInterceptor:function(){return!0},withCredentials:!1,tokenRoot:null,baseUrl:"/",loginUrl:"/auth/login",signupUrl:"/auth/signup",unlinkUrl:"/auth/unlink/",tokenName:"token",tokenPrefix:"satellizer",authHeader:"Authorization",authToken:"Bearer",storageType:"localStorage",providers:{facebook:{name:"facebook",url:"/auth/facebook",authorizationEndpoint:"https://www.facebook.com/v2.5/dialog/oauth",redirectUri:e.location.origin+"/",requiredUrlParams:["display","scope"],scope:["email"],scopeDelimiter:",",display:"popup",oauthType:"2.0",popupOptions:{width:580,height:400}},google:{name:"google",url:"/auth/google",authorizationEndpoint:"https://accounts.google.com/o/oauth2/auth",redirectUri:e.location.origin,requiredUrlParams:["scope"],optionalUrlParams:["display"],scope:["profile","email"],scopePrefix:"openid",scopeDelimiter:" ",display:"popup",oauthType:"2.0",popupOptions:{width:452,height:633}},github:{name:"github",url:"/auth/github",authorizationEndpoint:"https://github.com/login/oauth/authorize",redirectUri:e.location.origin,optionalUrlParams:["scope"],scope:["user:email"],scopeDelimiter:" ",oauthType:"2.0",popupOptions:{width:1020,height:618}},instagram:{name:"instagram",url:"/auth/instagram",authorizationEndpoint:"https://api.instagram.com/oauth/authorize",redirectUri:e.location.origin,requiredUrlParams:["scope"],scope:["basic"],scopeDelimiter:"+",oauthType:"2.0"},linkedin:{name:"linkedin",url:"/auth/linkedin",authorizationEndpoint:"https://www.linkedin.com/uas/oauth2/authorization",redirectUri:e.location.origin,requiredUrlParams:["state"],scope:["r_emailaddress"],scopeDelimiter:" ",state:"STATE",oauthType:"2.0",popupOptions:{width:527,height:582}},twitter:{name:"twitter",url:"/auth/twitter",authorizationEndpoint:"https://api.twitter.com/oauth/authenticate",redirectUri:e.location.origin,oauthType:"1.0",popupOptions:{width:495,height:645}},twitch:{name:"twitch",url:"/auth/twitch",authorizationEndpoint:"https://api.twitch.tv/kraken/oauth2/authorize",redirectUri:e.location.origin,requiredUrlParams:["scope"],scope:["user_read"],scopeDelimiter:" ",display:"popup",oauthType:"2.0",popupOptions:{width:500,height:560}},live:{name:"live",url:"/auth/live",authorizationEndpoint:"https://login.live.com/oauth20_authorize.srf",redirectUri:e.location.origin,requiredUrlParams:["display","scope"],scope:["wl.emails"],scopeDelimiter:" ",display:"popup",oauthType:"2.0",popupOptions:{width:500,height:560}},yahoo:{name:"yahoo",url:"/auth/yahoo",authorizationEndpoint:"https://api.login.yahoo.com/oauth2/request_auth",redirectUri:e.location.origin,scope:[],scopeDelimiter:",",oauthType:"2.0",popupOptions:{width:559,height:519}},bitbucket:{name:"bitbucket",url:"/auth/bitbucket",authorizationEndpoint:"https://bitbucket.org/site/oauth2/authorize",redirectUri:e.location.origin+"/",requiredUrlParams:["scope"],scope:["email"],scopeDelimiter:" ",oauthType:"2.0",popupOptions:{width:1028,height:529}}}}).provider("$auth",["SatellizerConfig",function(e){Object.defineProperties(this,{httpInterceptor:{get:function(){return e.httpInterceptor},set:function(t){"function"==typeof t?e.httpInterceptor=t:e.httpInterceptor=function(){return t}}},baseUrl:{get:function(){return e.baseUrl},set:function(t){e.baseUrl=t}},loginUrl:{get:function(){return e.loginUrl},set:function(t){e.loginUrl=t}},signupUrl:{get:function(){return e.signupUrl},set:function(t){e.signupUrl=t}},tokenRoot:{get:function(){return e.tokenRoot},set:function(t){e.tokenRoot=t}},tokenName:{get:function(){return e.tokenName},set:function(t){e.tokenName=t}},tokenPrefix:{get:function(){return e.tokenPrefix},set:function(t){e.tokenPrefix=t}},unlinkUrl:{get:function(){return e.unlinkUrl},set:function(t){e.unlinkUrl=t}},authHeader:{get:function(){return e.authHeader},set:function(t){e.authHeader=t}},authToken:{get:function(){return e.authToken},set:function(t){e.authToken=t}},withCredentials:{get:function(){return e.withCredentials},set:function(t){e.withCredentials=t}},storageType:{get:function(){return e.storageType},set:function(t){e.storageType=t}}}),t.forEach(Object.keys(e.providers),function(r){this[r]=function(n){return t.extend(e.providers[r],n)}},this);var r=function(r){e.providers[r.name]=e.providers[r.name]||{},t.extend(e.providers[r.name],r)};this.oauth1=function(t){r(t),e.providers[t.name].oauthType="1.0"},this.oauth2=function(t){r(t),e.providers[t.name].oauthType="2.0"},this.$get=["$q","SatellizerShared","SatellizerLocal","SatellizerOauth",function(e,t,r,n){var o={};return o.login=function(e,t){return r.login(e,t)},o.signup=function(e,t){return r.signup(e,t)},o.logout=function(){return t.logout()},o.authenticate=function(e,t){return n.authenticate(e,t)},o.link=function(e,t){return n.authenticate(e,t)},o.unlink=function(e,t){return n.unlink(e,t)},o.isAuthenticated=function(){return t.isAuthenticated()},o.getToken=function(){return t.getToken()},o.setToken=function(e){t.setToken({access_token:e})},o.removeToken=function(){return t.removeToken()},o.getPayload=function(){return t.getPayload()},o.setStorageType=function(e){return t.setStorageType(e)},o}]}]).factory("SatellizerShared",["$q","$window","$log","SatellizerConfig","SatellizerStorage",function(n,o,i,a,u){var l={},p=a.tokenPrefix?[a.tokenPrefix,a.tokenName].join("_"):a.tokenName;return l.getToken=function(){return u.get(p)},l.getPayload=function(){var t=u.get(p);if(t&&3===t.split(".").length)try{var n=t.split(".")[1],o=n.replace(/-/g,"+").replace(/_/g,"/");return JSON.parse(decodeURIComponent(escape(e.atob(o))))}catch(i){return r}},l.setToken=function(e){if(!e)return i.warn("Can't set token without passing a value");var r,n=e&&e.access_token;if(n&&(t.isObject(n)&&t.isObject(n.data)?e=n:t.isString(n)&&(r=n)),!r&&e){var o=a.tokenRoot&&a.tokenRoot.split(".").reduce(function(e,t){return e[t]},e.data);r=o?o[a.tokenName]:e.data&&e.data[a.tokenName]}if(!r){var l=a.tokenRoot?a.tokenRoot+"."+a.tokenName:a.tokenName;return i.warn('Expecting a token named "'+l)}u.set(p,r)},l.removeToken=function(){u.remove(p)},l.isAuthenticated=function(){var e=u.get(p);if(e){if(3===e.split(".").length)try{var t=e.split(".")[1],r=t.replace(/-/g,"+").replace(/_/g,"/"),n=JSON.parse(o.atob(r)).exp;if(n){var i=Math.round((new Date).getTime()/1e3)>=n;return i?!1:!0}}catch(a){return!0}return!0}return!1},l.logout=function(){return u.remove(p),n.when()},l.setStorageType=function(e){a.storageType=e},l}]).factory("SatellizerOauth",["$q","$http","SatellizerConfig","SatellizerUtils","SatellizerShared","SatellizerOauth1","SatellizerOauth2",function(e,t,r,n,o,i,a){var u={};return u.authenticate=function(t,n){var u="1.0"===r.providers[t].oauthType?new i:new a,l=e.defer();return u.open(r.providers[t],n||{}).then(function(e){r.providers[t].url&&o.setToken(e,!1),l.resolve(e)})["catch"](function(e){l.reject(e)}),l.promise},u.unlink=function(e,o){return o=o||{},o.url=o.url?o.url:n.joinUrl(r.baseUrl,r.unlinkUrl),o.data={provider:e}||o.data,o.method=o.method||"POST",o.withCredentials=o.withCredentials||r.withCredentials,t(o)},u}]).factory("SatellizerLocal",["$http","SatellizerUtils","SatellizerShared","SatellizerConfig",function(e,t,r,n){var o={};return o.login=function(o,i){return i=i||{},i.url=i.url?i.url:t.joinUrl(n.baseUrl,n.loginUrl),i.data=o||i.data,i.method=i.method||"POST",i.withCredentials=i.withCredentials||n.withCredentials,e(i).then(function(e){return r.setToken(e),e})},o.signup=function(r,o){return o=o||{},o.url=o.url?o.url:t.joinUrl(n.baseUrl,n.signupUrl),o.data=r||o.data,o.method=o.method||"POST",o.withCredentials=o.withCredentials||n.withCredentials,e(o)},o}]).factory("SatellizerOauth2",["$q","$http","$window","$timeout","SatellizerPopup","SatellizerUtils","SatellizerConfig","SatellizerStorage",function(r,n,o,i,a,u,l,p){return function(){var o={},c={defaultUrlParams:["response_type","client_id","redirect_uri"],responseType:"code",responseParams:{code:"code",clientId:"clientId",redirectUri:"redirectUri"}};return o.open=function(n,l){c=u.merge(n,c);var s=r.defer();return i(function(){var r,n,i=c.name+"_state";return t.isFunction(c.state)?p.set(i,c.state()):t.isString(c.state)&&p.set(i,c.state),r=[c.authorizationEndpoint,o.buildQueryString()].join("?"),n=e.cordova?a.open(r,c.name,c.popupOptions,c.redirectUri).eventListener(c.redirectUri):a.open(r,c.name,c.popupOptions,c.redirectUri).pollPopup(c.redirectUri),n.then(function(e){return"token"!==c.responseType&&c.url||s.resolve(e),e.state&&e.state!==p.get(i)?s.reject("The value returned in the state parameter does not match the state value from your original authorization code request."):void s.resolve(o.exchangeForToken(e,l))})}),s.promise},o.exchangeForToken=function(e,r){var o=t.extend({},r);t.forEach(c.responseParams,function(t,r){switch(r){case"code":o[t]=e.code;break;case"clientId":o[t]=c.clientId;break;case"redirectUri":o[t]=c.redirectUri;break;default:o[t]=e[r]}}),e.state&&(o.state=e.state);var i=l.baseUrl?u.joinUrl(l.baseUrl,c.url):c.url;return n.post(i,o,{withCredentials:l.withCredentials})},o.buildQueryString=function(){var e=[],r=["defaultUrlParams","requiredUrlParams","optionalUrlParams"];return t.forEach(r,function(r){t.forEach(c[r],function(r){var n=u.camelCase(r),o=t.isFunction(c[r])?c[r]():c[n];if("redirect_uri"!==r||o){if("state"===r){var i=c.name+"_state";o=encodeURIComponent(p.get(i))}"scope"===r&&Array.isArray(o)&&(o=o.join(c.scopeDelimiter),c.scopePrefix&&(o=[c.scopePrefix,o].join(c.scopeDelimiter))),e.push([r,o])}})}),e.map(function(e){return e.join("=")}).join("&")},o}}]).factory("SatellizerOauth1",["$q","$http","SatellizerPopup","SatellizerConfig","SatellizerUtils",function(r,n,o,i,a){return function(){var r={},u={url:null,name:null,popupOptions:null,redirectUri:null,authorizationEndpoint:null};return r.open=function(l,p){t.extend(u,l);var c,s=i.baseUrl?a.joinUrl(i.baseUrl,u.url):u.url;return e.cordova||(c=o.open("",u.name,u.popupOptions,u.redirectUri)),n.post(s,u).then(function(t){var n=[u.authorizationEndpoint,r.buildQueryString(t.data)].join("?");e.cordova?c=o.open(n,u.name,u.popupOptions,u.redirectUri):c.popupWindow.location=n;var i;return i=e.cordova?c.eventListener(u.redirectUri):c.pollPopup(u.redirectUri),i.then(function(e){return r.exchangeForToken(e,p)})})},r.exchangeForToken=function(e,r){var o=t.extend({},r,e),l=i.baseUrl?a.joinUrl(i.baseUrl,u.url):u.url;return n.post(l,o,{withCredentials:i.withCredentials})},r.buildQueryString=function(e){var r=[];return t.forEach(e,function(e,t){r.push(encodeURIComponent(t)+"="+encodeURIComponent(e))}),r.join("&")},r}}]).factory("SatellizerPopup",["$q","$interval","$window","SatellizerConfig","SatellizerUtils",function(n,o,i,a,u){var l={};return l.url="",l.popupWindow=null,l.open=function(t,r,n){l.url=t;var o=l.stringifyOptions(l.prepareOptions(n)),a=i.navigator.userAgent,u=e.cordova||a.indexOf("CriOS")>-1?"_blank":r;return l.popupWindow=i.open(t,u,o),i.popup=l.popupWindow,l.popupWindow&&l.popupWindow.focus&&l.popupWindow.focus(),l},l.eventListener=function(e){var r=n.defer();return l.popupWindow.addEventListener("loadstart",function(n){if(0===n.url.indexOf(e)){var o=document.createElement("a");if(o.href=n.url,o.search||o.hash){var i=o.search.substring(1).replace(/\/$/,""),a=o.hash.substring(1).replace(/\/$/,""),p=u.parseQueryString(a),c=u.parseQueryString(i);t.extend(c,p),c.error||r.resolve(c),l.popupWindow.close()}}}),l.popupWindow.addEventListener("loaderror",function(){r.reject("Authorization Failed")}),r.promise},l.pollPopup=function(e){var i=n.defer(),a=document.createElement("a");a.href=e;var p=u.getFullUrlPath(a),c=o(function(){(!l.popupWindow||l.popupWindow.closed||l.popupWindow.closed===r)&&(i.reject("The popup window was closed."),o.cancel(c));try{var e=u.getFullUrlPath(l.popupWindow.location);if(e===p){if(l.popupWindow.location.search||l.popupWindow.location.hash){var n=l.popupWindow.location.search.substring(1).replace(/\/$/,""),a=l.popupWindow.location.hash.substring(1).replace(/[\/$]/,""),s=u.parseQueryString(a),h=u.parseQueryString(n);t.extend(h,s),h.error?i.reject(h):i.resolve(h)}else i.reject("Redirect has occurred but no query or hash parameters were found. They were either not set during the redirect, or were removed before Satellizer could read them, e.g. AngularJS routing mechanism.");o.cancel(c),l.popupWindow.close()}}catch(d){}},20);return i.promise},l.prepareOptions=function(e){e=e||{};var r=e.width||500,n=e.height||500;return t.extend({width:r,height:n,left:i.screenX+(i.outerWidth-r)/2,top:i.screenY+(i.outerHeight-n)/2.5},e)},l.stringifyOptions=function(e){var r=[];return t.forEach(e,function(e,t){r.push(t+"="+e)}),r.join(",")},l}]).service("SatellizerUtils",function(){this.getFullUrlPath=function(e){return e.protocol+"//"+e.hostname+(e.port?":"+e.port:"")+e.pathname},this.camelCase=function(e){return e.replace(/([\:\-\_]+(.))/g,function(e,t,r,n){return n?r.toUpperCase():r})},this.parseQueryString=function(e){var r,n,o={};return t.forEach((e||"").split("&"),function(e){e&&(n=e.split("="),r=decodeURIComponent(n[0]),o[r]=t.isDefined(n[1])?decodeURIComponent(n[1]):!0)}),o},this.joinUrl=function(e,t){if(/^(?:[a-z]+:)?\/\//i.test(t))return t;var r=[e,t].join("/"),n=function(e){return e.replace(/[\/]+/g,"/").replace(/\/\?/g,"?").replace(/\/\#/g,"#").replace(/\:\//g,"://")};return n(r)},this.merge=function(e,t){var r={};for(var n in e)e.hasOwnProperty(n)&&(n in t&&"object"==typeof e[n]&&null!==n?r[n]=this.merge(e[n],t[n]):r[n]=e[n]);for(n in t)if(t.hasOwnProperty(n)){if(n in r)continue;r[n]=t[n]}return r}}).factory("SatellizerStorage",["$window","$log","SatellizerConfig",function(e,t,r){var n={},o=function(){try{var t=r.storageType in e&&null!==e[r.storageType];if(t){var n=Math.random().toString(36).substring(7);e[r.storageType].setItem(n,""),e[r.storageType].removeItem(n)}return t}catch(o){return!1}}();return o||t.warn(r.storageType+" is not available."),{get:function(t){return o?e[r.storageType].getItem(t):n[t]},set:function(t,i){return o?e[r.storageType].setItem(t,i):n[t]=i},remove:function(t){return o?e[r.storageType].removeItem(t):delete n[t]}}}]).factory("SatellizerInterceptor",["$q","SatellizerConfig","SatellizerStorage","SatellizerShared",function(e,t,r,n){return{request:function(e){if(e.skipAuthorization)return e;if(n.isAuthenticated()&&t.httpInterceptor(e)){var o=t.tokenPrefix?t.tokenPrefix+"_"+t.tokenName:t.tokenName,i=r.get(o);t.authHeader&&t.authToken&&(i=t.authToken+" "+i),e.headers[t.authHeader]=i}return e},responseError:function(t){return e.reject(t)}}}]).config(["$httpProvider",function(e){e.interceptors.push("SatellizerInterceptor")}])}(window,window.angular);
+angular.module('satellizer')
+.controller('LoginController', function($scope, $auth) {
+
+  $scope.authenticate = function(provider) {
+    console.log("test auth");
+    $auth.authenticate(provider);
+    console.log("mail "+$scope.email);
+    console.log("pwd "+$scope.password);
+    //console.log($scope.isAuthentificate);
+    //$auth.login();
+    //console.log($auth.login());
+  };
+
+  $scope.submit = function submitAuth() {
+    console.log("test auth2");
+    console.log("mail "+$scope.email);
+    console.log("pwd "+$scope.password);
+    var user = {
+      email: $scope.email,
+      password: $scope.password
+    };
+    $auth.login(user);
+  };
+});
