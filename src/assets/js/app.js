@@ -6,6 +6,7 @@
     'ngMap',
     'LocalStorageModule',
     'satellizer',
+    'naif.base64',
     'helloModule', 'ContactModule', 'CheckinModule',
   ])
 

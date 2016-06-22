@@ -30,5 +30,6 @@ angular.module('satellizer')
   $scope.checkAuth = function(){
     console.log("check co: "+$auth.isAuthenticated());
     $scope.testAuth = $auth.isAuthenticated();
+    console.log($scope.testAuth);
   };
 });

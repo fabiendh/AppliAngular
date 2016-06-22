@@ -1,22 +1,29 @@
+<!--<div ng-if="testAuth == true" ng-controller="LoginController as LoginCtrl">
+{{testAuth}}-->
+  <div ng-controller="CheckinController as CheckinCtrl">
+    <ul>
 
-<div ng-controller="CheckinController as CheckinCtrl">
-  <ul>
+      <li ng-repeat="checkin in checkins">
+        <a href="#/checkin/{{checkin.id}}">
+          <div class="list">
+            <div class="info">
+              <h1>{{checkin.user.name}}</h1>
+              <span class="sous_titre">Date de création: </span>{{checkin.user.created_at}}
+            </div>
+            <div class="img">
+              <img src="{{checkin.user.picture}}" alt="" />
+            </div>
 
-    <li ng-repeat="checkin in checkins">
-      <a href="#/checkin/{{checkin.id}}">
-        <div class="list">
-          <div class="info">
-            <h1>{{checkin.user.name}}</h1>
-            <span class="sous_titre">Date de création: </span>{{checkin.created_at}}
+
           </div>
-          <div class="img">
-            <img src="{{checkin.user.picture}}" alt="" />
-          </div>
-          
+        </a>
+      </li>
 
-        </div>
-      </a>
-    </li>
+    </ul>
+  </div>
+<!--</div>
 
-  </ul>
-</div>
+<div ng-if="testAuth == false" ng-controller="LoginController as LoginCtrl">
+  {{testAuth}}
+  Vous devez être connecter
+</div>-->

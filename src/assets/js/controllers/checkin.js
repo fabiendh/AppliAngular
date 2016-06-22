@@ -10,7 +10,7 @@
         method: 'GET',
         url: 'http://checkin-api.dev.cap-liberte.com/checkin'
       }).then(function successCallback(response) {
-
+        console.log("checkin "+response.data[0]);
         $scope.checkins = response.data;
         // this callback will be called asynchronously
         // when the response is available
@@ -51,10 +51,21 @@
 
     // Simple GET request example:
     var getMeteo=function(){
+      console.log("coucou");
       $http({
         method: 'GET',
-        url: 'http://api.openweathermap.org/data/2.5/weather?lat='+$scope.checkinsDetails.lat+'&lon='+$scope.checkinsDetails.lng+'&appid=c68e847fbb4213fb36c3bfb29a4a9b02&lang=fr'
+        url: 'http://api.openweathermap.org/data/2.5/weather?lat='+$scope.checkinsDetails.lat+'&lon='+$scope.checkinsDetails.lng+'&appid=c68e847fbb4213fb36c3bfb29a4a9b02&lang=fr',
+        /*headers : {"Access-Control-Allow-Origin": "*",
+                   "Access-Control-Allow-Credentials": "true",
+                   "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS,POST,PUT",
+                   "Access-Control-Allow-Headers": "Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers"
+              }*/
       }).then(function successCallback(response) {
+        /*response.setHeader("Access-Control-Allow-Origin", "*");
+        response.setHeader("Access-Control-Allow-Credentials", "true");
+        response.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT");
+        response.setHeader("Access-Control-Allow-Headers", "Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers");*/
+        console.log("donnée " + response.data);
         $scope.openweather = response.data;
         $scope.openweather.main.temp_min=  Math.round($scope.openweather.main.temp_min - 273);
         $scope.openweather.main.temp_max=  Math.round($scope.openweather.main.temp_max - 273);
@@ -172,15 +183,19 @@
     };
 
     $scope.submit = function (key, val) {
+      //console.log($scope.file.base64);
         var tab = localStorageService.get("CheckIn");
         if (tab === null) {
           console.log("test");
           tab = [];
         }
 
+        getMeteo($scope.lat, $scope.lng);
+
         var checkins={
                 lat: $scope.lat,
-                lng: $scope.lng
+                lng: $scope.lng,
+                img: $scope.file.filetype + ";base64,"+$scope.file.base64
               };
 
         tab.push(checkins);
@@ -195,6 +210,42 @@
       var tab = localStorageService.get("CheckIn");
       $scope.number = tab.length;
     });
+
+    var getMeteo=function(lat, lng){
+      console.log("coucou");
+      $http({
+        method: 'GET',
+        url: 'http://api.openweathermap.org/data/2.5/weather?lat='+lat+'&lon='+lng+'&appid=c68e847fbb4213fb36c3bfb29a4a9b02&lang=fr',
+        headers:{
+          "Accept": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Allow-Headers": "Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers",
+          "Content-Type": "application/json; charset=utf-8"
+        }
+        /*headers : {"Access-Control-Allow-Origin": "*",
+                   "Access-Control-Allow-Credentials": "true",
+                   "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS,POST,PUT",
+                   "Access-Control-Allow-Headers": "Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers"
+              }*/
+      }).then(function successCallback(response) {
+        response.setHeader("Access-Control-Allow-Origin", "*");
+        response.setHeader("Access-Control-Allow-Credentials", "true");
+        response.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT");
+        response.setHeader("Access-Control-Allow-Headers", "Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers");
+        console.log("donnée " + response.data);
+        $scope.openweather = response.data;
+        $scope.openweather.main.temp_min=  Math.round($scope.openweather.main.temp_min - 273);
+        $scope.openweather.main.temp_max=  Math.round($scope.openweather.main.temp_max - 273);
+        $scope.openweather.main.temp=  Math.round($scope.openweather.main.temp - 273);
+        getMaps();
+        // this callback will be called asynchronously
+        // when the response is available
+      }, function errorCallback(response) {
+        // called asynchronously if an error occurs
+        // or server returns response with an error status.
+      });
+    };
 
   })
 
@@ -233,7 +284,8 @@
         url: 'http://checkin-api.dev.cap-liberte.com/checkin',
         data: {
           lat: tabLS[i].lat,
-          lng: tabLS[i].lng
+          lng: tabLS[i].lng,
+          image: tabLS[i].img,
         },
         headers:{
           'Content-Type':undefined
